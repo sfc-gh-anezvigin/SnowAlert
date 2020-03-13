@@ -1086,3 +1086,228 @@ FROM (
 WHERE 1=1
   AND REGEXP_INSTR(network_bypass, '\\bAzureServices\\b') = 0
 ;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_1_VIOLATION_QUERY COPY GRANTS
+  COMMENT='Log Profiles exist for every subscription
+  @id 05R5437IZC2F
+  @tags cis, azure, log-profiles'
+AS
+SELECT '05R5437IZC2F' AS query_id
+     , 'Azure CIS 5.1.1: Every Subscription should have a Log Profile' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'Subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'CIS 5.1.1 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'log_profile_id', log_profile_id
+       ) AS identity
+FROM (
+  SELECT DISTINCT
+    tenant_id,
+    subscription_id,
+    id log_profile_id,
+    identity,
+    kind,
+    location,
+    name,
+    properties,
+    tags,
+    type
+  FROM data.azure_collect_log_profiles
+  WHERE recorded_at > CURRENT_DATE - 1
+)
+WHERE 1=1
+  AND name IS NULL
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_2_VIOLATION_QUERY COPY GRANTS
+  COMMENT='Set Log Profiles retention to 365 days or greater
+  @id 6E90XE64X3K
+  @tags cis, azure, log-profiles'
+AS
+SELECT '6E90XE64X3K' AS query_id
+     , 'Azure CIS 5.1.2: Log Profile retention length' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'Subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'CIS 5.1.2 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'log_profile_id', log_profile_id
+       ) AS identity
+FROM (
+  SELECT DISTINCT
+    tenant_id,
+    subscription_id,
+    id log_profile_id,
+    identity,
+    kind,
+    location,
+    name,
+    properties,
+    IFNULL(properties:retentionPolicy.days, 0) retention_days,
+    IFNULL(properties:retentionPolicy.enabled, FALSE) retention_enabled,
+    tags,
+    type
+  FROM data.azure_collect_log_profiles
+  WHERE recorded_at > CURRENT_DATE - 1
+    AND retention_enabled = TRUE
+)
+WHERE 1=1
+  AND retention_days < 365
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_3_VIOLATION_QUERY COPY GRANTS
+  COMMENT='Log Profiles should retain all categories
+  @id 2JJNE5ZV9WY
+  @tags cis, azure, log-profiles'
+AS
+SELECT '2JJNE5ZV9WY' AS query_id
+     , 'Azure CIS 5.1.3: Log Profile retention length' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'Subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'CIS 5.1.3 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'log_profile_id', log_profile_id
+       ) AS identity
+FROM (
+  SELECT DISTINCT
+    tenant_id,
+    subscription_id,
+    id log_profile_id,
+    identity,
+    kind,
+    location,
+    name,
+    properties,
+    IFNULL(properties:categories, ARRAY_CONSTRUCT()) log_profile_categories,
+    tags,
+    type
+  FROM data.azure_collect_log_profiles
+  WHERE recorded_at > CURRENT_DATE - 1
+    AND name IS NOT NULL  -- disclude the 5.1.1 violations (no log profile)
+)
+WHERE 1=1
+  AND (
+    NOT ARRAY_CONTAINS('Write'::VARIANT, log_profile_categories)
+    OR NOT ARRAY_CONTAINS('Delete'::VARIANT, log_profile_categories)
+    OR NOT ARRAY_CONTAINS('Action'::VARIANT, log_profile_categories)
+  )
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_4_VIOLATION_QUERY COPY GRANTS
+  COMMENT='log profile captures activity logs for all regions including global
+  @id M63QX83WJXL
+  @tags cis, azure, log-profiles'
+AS
+-- TODO: add global location coverage
+SELECT 'M63QX83WJXL' AS query_id
+     , 'Azure CIS 5.1.4: Log Profile retention length' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'Subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'CIS 5.1.4 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'location_name', location_name
+       ) AS identity
+FROM (
+  SELECT
+    locs.tenant_id,
+    locs.subscription_id,
+    locs.location_name location_name,
+    profs.location_name log_profile_location
+  FROM (
+    SELECT DISTINCT
+      tenant_id,
+      subscription_id,
+      id location_id,
+      name location_name,
+      display_name location_display_name
+    FROM data.azure_collect_subscriptions_locations
+    WHERE recorded_at > CURRENT_DATE - 1
+  ) locs
+  LEFT OUTER JOIN (
+    SELECT DISTINCT
+      tenant_id,
+      subscription_id,
+      id log_profile_id,
+      identity,
+      kind,
+      value::STRING location_name,
+      name log_profile_name,
+      properties,
+      tags,
+      type
+    FROM data.azure_collect_log_profiles p,
+    LATERAL FLATTEN (input => properties:locations)
+    WHERE recorded_at > CURRENT_DATE - 1
+  ) profs
+  ON (
+    locs.tenant_id = profs.tenant_id
+    AND locs.subscription_id = profs.subscription_id
+    AND locs.location_name = profs.location_name
+  )
+)
+WHERE 1=1
+  AND log_profile_location IS NULL
+;
