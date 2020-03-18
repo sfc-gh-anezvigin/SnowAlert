@@ -1192,7 +1192,7 @@ CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_3_VIOLATION_QUERY COPY GRANTS
   @tags cis, azure, log-profiles'
 AS
 SELECT '2JJNE5ZV9WY' AS query_id
-     , 'Azure CIS 5.1.3: Log Profile retention length' AS title
+     , 'Azure CIS 5.1.3: Log Profile retention categories' AS title
      , OBJECT_CONSTRUCT(
          'cloud', 'azure',
          'tenant_id', tenant_id,
@@ -1247,7 +1247,7 @@ CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_4_VIOLATION_QUERY COPY GRANTS
 AS
 -- TODO: add global location coverage
 SELECT 'M63QX83WJXL' AS query_id
-     , 'Azure CIS 5.1.4: Log Profile retention length' AS title
+     , 'Azure CIS 5.1.4: Log Profile retention regions' AS title
      , OBJECT_CONSTRUCT(
          'cloud', 'azure',
          'tenant_id', tenant_id,
@@ -1310,4 +1310,195 @@ FROM (
 )
 WHERE 1=1
   AND log_profile_location IS NULL
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_5_VIOLATION_QUERY COPY GRANTS
+  COMMENT='storage container storing the activity logs should not be publicly accessible
+  @id WE59BTELH49
+  @tags cis, azure, log-profiles'
+AS
+SELECT 'WE59BTELH49' AS query_id
+     , 'Azure CIS 5.1.5: storage container storing the activity logs should not be publicly accessible' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'account', tenant_id
+       ) AS environment
+     , (
+         'Container  "' || sa_container_name || '"' ||
+         'in Storage Account `' || storage_account_name || '`, ' ||
+         'in Subscription `' || subscription_id || '`, ' ||
+         'in Tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'AZ Subscription violating CIS 5.1.5: ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS identity
+FROM (
+  SELECT *
+  FROM (
+    SELECT
+      properties:storageAccountId::STRING storage_account_id,
+      SPLIT(storage_account_id, '/')[8]::STRING storage_account_name,
+      'insight-operational-logs' sa_container_name
+    FROM data.azure_collect_log_profiles
+    WHERE recorded_at > CURRENT_DATE - 1
+      AND storage_account_id IS NOT NULL
+  ) log_profile
+  INNER JOIN (
+    SELECT DISTINCT
+      tenant_id,
+      subscription_id,
+      account_name storage_account_name,
+      name sa_container_name,
+      properties:PublicAccess public_access,
+      properties
+    FROM data.azure_collect_storage_accounts_containers
+    WHERE recorded_at > CURRENT_DATE - 7
+  ) storage_container
+  USING (
+    storage_account_name,
+    sa_container_name
+  )
+)
+WHERE 1=1
+  AND public_access IS NOT NULL
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_6_VIOLATION_QUERY COPY GRANTS
+  COMMENT='storage account containing the container with activity logs should be encrypted with BYOK
+  @id QC0ASF70MI8
+  @tags cis, azure, log-profiles'
+AS
+SELECT 'QC0ASF70MI8' AS query_id
+     , 'Azure CIS 5.1.6: storage container storing the activity logs should be encrypted with BYOK' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'account', tenant_id
+       ) AS environment
+     , (
+         'Storage Account `' || storage_account_name || '`, ' ||
+         'in Subscription `' || subscription_id || '`, ' ||
+         'in Tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'AZ Subscription violating CIS 5.1.6: ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS identity
+FROM (
+  SELECT *
+  FROM (
+    SELECT
+      properties:storageAccountId::STRING storage_account_id,
+      SPLIT(storage_account_id, '/')[8]::STRING storage_account_name
+    FROM data.azure_collect_log_profiles
+    WHERE recorded_at > CURRENT_DATE - 1
+      AND storage_account_id IS NOT NULL
+  ) log_profile
+  INNER JOIN (
+    SELECT DISTINCT
+      tenant_id,
+      subscription_id,
+      name storage_account_name,
+      properties:encryption.keySource::STRING key_source,
+      properties:encryption.keyVaultProperties::STRING key_vault_properties,
+      properties
+    FROM data.azure_collect_storage_accounts
+    WHERE recorded_at > CURRENT_DATE - 7
+  ) storage_account
+  USING (
+    storage_account_name
+  )
+)
+WHERE 1=1
+  AND NOT (
+    key_source = 'Microsoft.Keyvault'
+    AND key_vault_properties IS NOT NULL
+    -- todo: make example and test this
+  )
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_5_1_7_VIOLATION_QUERY COPY GRANTS
+  COMMENT='logging for Azure KeyVault is Enabled
+  @id 1OMJCL2ANXN
+  @tags cis, azure, log-profiles'
+AS
+SELECT '1OMJCL2ANXN' AS query_id
+     , 'Azure CIS 5.1.7: logging for Azure KeyVault is "Enabled"' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'account', tenant_id
+       ) AS environment
+     , (
+         'Vault `' || vault_id || '`, ' ||
+         'in Subscription `' || subscription_id || '`, ' ||
+         'in Tenant `' || tenant_id || '`.'
+       ) AS object
+     , 'AZ Subscription violating CIS 5.1.7: ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS identity
+FROM (
+  SELECT
+    properties:logs logs,
+    logs[0]:category::STRING log_category,
+    logs[0]:enabled::BOOLEAN log_enabled,
+    logs[0]:retentionPolicy.days::NUMBER log_retention_days,
+    logs[0]:retentionPolicy.enabled::BOOLEAN log_retention_enabled,
+    *
+  FROM (
+    SELECT
+      tenant_id,
+      subscription_id,
+      id vault_id,
+      name
+    FROM data.azure_collect_vaults
+    WHERE recorded_at > CURRENT_DATE - 3
+      AND name IS NOT NULL
+  ) vaults
+  LEFT JOIN (
+    SELECT DISTINCT
+      resource_uri vault_id,
+      properties
+    FROM data.azure_collect_diagnostic_settings
+    WHERE recorded_at > CURRENT_DATE - 7
+  ) storage_account
+  USING (
+    vault_id
+  )
+)
+WHERE 1=1
+  AND (
+    logs IS NULL
+    OR log_category <> 'AuditEvent'
+    OR log_enabled != TRUE
+    OR (
+      -- TODO: check with support if logic is same as 5.1.2
+      log_retention_enabled = TRUE
+      AND log_retention_days = 0
+    )
+  )
 ;
