@@ -1502,3 +1502,221 @@ WHERE 1=1
     )
   )
 ;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_6_1_VIOLATION_QUERY COPY GRANTS
+  COMMENT='RDP access is restricted from the internet
+  @id U2MV5Z68P3C
+  @tags cis, azure, networking'
+AS
+SELECT 'U2MV5Z68P3C' AS query_id
+     , 'Azure CIS 6.1: RDP access is restricted from the internet' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'NSG with the name "' || nsg_name || '", ' ||
+         'in subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`'
+       ) AS object
+     , 'AZ CIS 6.1 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'nsg_id', subscription_id
+       ) AS identity
+FROM (
+  SELECT
+    tenant_id,
+    subscription_id,
+    id nsg_id,
+    etag nsg_etag,
+    name nsg_name,
+    location nsg_location,
+    properties nsg_properties,
+    value security_rule,
+    value:properties.access::STRING access,
+    value:properties.destinationPortRange::STRING destination_port_range,
+    value:properties.direction::STRING direction,
+    value:properties.protocol::STRING protocol,
+    value:properties.sourceAddressPrefix::STRING source_address_prefix
+  FROM data.azure_collect_network_security_groups
+  , LATERAL FLATTEN (input => properties:securityRules)
+  WHERE recorded_at > CURRENT_DATE - 2
+)
+WHERE 1=1
+  AND access = 'Allow'
+  AND direction = 'Inbound'
+  AND protocol = 'TCP'
+  AND (
+    destination_port_range = '3389'
+    OR (
+      IFF(
+        CONTAINS(destination_port_range, '-'),
+        TO_NUMBER(SPLIT(destination_port_range, '-')[0]) <= 3389
+        AND TO_NUMBER(SPLIT(destination_port_range, '-')[1]) >= 3389,
+        FALSE
+      )
+    )
+  )
+  -- TODO: handle multiple port ranges like '22,101,103,200-210'
+  AND source_address_prefix IN (
+    '*',
+    '0.0.0.0',
+    '<nw>/0',
+    '/0',
+    'internet',
+    'any'
+  )
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_6_2_VIOLATION_QUERY COPY GRANTS
+  COMMENT='SSH access is restricted from the internet
+  @id OJWU2K5B4WO
+  @tags cis, azure, networking'
+AS
+SELECT 'OJWU2K5B4WO' AS query_id
+     , 'Azure CIS 6.2: SSH access is restricted from the internet' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'NSG with the name "' || nsg_name || '", ' ||
+         'in subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`'
+       ) AS object
+     , 'AZ CIS 6.2 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'nsg_id', nsg_id
+       ) AS identity
+FROM (
+  SELECT
+    tenant_id,
+    subscription_id,
+    id nsg_id,
+    etag nsg_etag,
+    name nsg_name,
+    location nsg_location,
+    properties nsg_properties,
+    value security_rule,
+    value:properties.access::STRING access,
+    value:properties.destinationPortRange::STRING destination_port_range,
+    value:properties.direction::STRING direction,
+    value:properties.protocol::STRING protocol,
+    value:properties.sourceAddressPrefix::STRING source_address_prefix
+  FROM data.azure_collect_network_security_groups
+  , LATERAL FLATTEN (input => properties:securityRules)
+  WHERE recorded_at > CURRENT_DATE - 2
+)
+WHERE 1=1
+  AND access = 'Allow'
+  AND direction = 'Inbound'
+  AND protocol = 'TCP'
+  AND (
+    destination_port_range = '22'
+    OR (
+      IFF(
+        CONTAINS(destination_port_range, '-'),
+        TO_NUMBER(SPLIT(destination_port_range, '-')[0]) <= 22
+        AND TO_NUMBER(SPLIT(destination_port_range, '-')[1]) >= 22,
+        FALSE
+      )
+    )
+  )
+  -- TODO: handle multiple port ranges like '22,101,103,200-210'
+  AND source_address_prefix IN (
+    '*',
+    '0.0.0.0',
+    '<nw>/0',
+    '/0',
+    'internet',
+    'any'
+  )
+;
+
+CREATE OR REPLACE VIEW rules.AZURE_CIS_6_5_VIOLATION_QUERY COPY GRANTS
+  COMMENT='Network Watcher enabled for each Subscription Location
+  @id P5N44TUVJ9N
+  @tags cis, azure, networking'
+AS
+SELECT 'P5N44TUVJ9N' AS query_id
+     , 'Azure CIS 6.5: Network Watcher enabled for each Subscription Location' AS title
+     , OBJECT_CONSTRUCT(
+         'cloud', 'azure',
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id
+       ) AS environment
+     , (
+         'Location "' || location_name || '", ' ||
+         'in subscription `' || subscription_id || '`, ' ||
+         'in tenant `' || tenant_id || '`'
+       ) AS object
+     , 'AZ CIS 6.5 violated by ' || object AS description
+     , CURRENT_TIMESTAMP AS alert_time
+     , OBJECT_CONSTRUCT(*) AS event_data
+     , 'SnowAlert' AS detector
+     , 'High' AS severity
+     , 'devsecops' AS owner
+     , OBJECT_CONSTRUCT(
+         'query_id', query_id,
+         'tenant_id', tenant_id,
+         'subscription_id', subscription_id,
+         'location_name', location_name
+       ) AS identity
+FROM (
+  SELECT
+    tenant_id,
+    subscription_id,
+    location_name,
+    location_id,
+    location_display_name
+  FROM (
+    SELECT DISTINCT
+      tenant_id,
+      subscription_id,
+      id location_id,
+      name location_name,
+      display_name location_display_name
+    FROM data.azure_collect_subscriptions_locations
+    WHERE recorded_at > CURRENT_DATE - 1
+  ) subs
+  LEFT OUTER JOIN (
+    SELECT DISTINCT
+      tenant_id,
+      subscription_id,
+      id nw_id,
+      etag nw_etag,
+      name nw_name,
+      location location_name,
+      properties nw_properties
+    FROM data.azure_collect_network_watchers
+    WHERE recorded_at > CURRENT_DATE - 1
+      AND properties:provisioningState = 'Succeeded'
+  ) nws
+  USING (
+    tenant_id,
+    subscription_id,
+    location_name
+  )
+  WHERE nw_id IS NULL
+)
+WHERE 1=1
+;
+
