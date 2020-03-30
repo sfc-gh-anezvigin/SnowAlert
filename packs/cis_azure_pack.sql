@@ -1533,7 +1533,7 @@ SELECT 'U2MV5Z68P3C' AS query_id
          'nsg_id', subscription_id
        ) AS identity
 FROM (
-  SELECT
+  SELECT DISTINCT
     tenant_id,
     subscription_id,
     id nsg_id,
